@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
+import { createHash } from 'node:crypto'
+import { z } from 'zod'
 import {
   scheduleCreateSchema,
   scheduleUpdateSchema,
@@ -779,5 +781,37 @@ describe('scheduleRunsQuerySchema', () => {
 
     expect(result.sort).toBe('startedAt')
     expect(result.order).toBe('asc')
+  })
+})
+
+describe('module-registered schedule ids', () => {
+  const moduleScheduleId = (stableKey: string): string => {
+    const hex = createHash('sha256').update(stableKey).digest('hex')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+  }
+  const scheduleId = moduleScheduleId('payment_gateways:session-initialization-prune')
+
+  it('uses an id that a strict RFC 4122 uuid check rejects', () => {
+    expect(z.uuid().safeParse(scheduleId).success).toBe(false)
+  })
+
+  it.each([
+    ['update', () => scheduleUpdateSchema.parse({ id: scheduleId })],
+    ['delete', () => scheduleDeleteSchema.parse({ id: scheduleId })],
+    ['trigger', () => scheduleTriggerSchema.parse({ id: scheduleId })],
+    ['list filter', () => scheduleListQuerySchema.parse({ id: scheduleId })],
+    ['runs filter', () => scheduleRunsQuerySchema.parse({ scheduledJobId: scheduleId })],
+  ])('accepts it in the %s schema', (_label, parse) => {
+    expect(parse).not.toThrow()
+  })
+
+  it.each([
+    ['update', () => scheduleUpdateSchema.parse({ id: 'not-a-uuid' })],
+    ['delete', () => scheduleDeleteSchema.parse({ id: 'not-a-uuid' })],
+    ['trigger', () => scheduleTriggerSchema.parse({ id: 'not-a-uuid' })],
+    ['list filter', () => scheduleListQuerySchema.parse({ id: 'not-a-uuid' })],
+    ['runs filter', () => scheduleRunsQuerySchema.parse({ scheduledJobId: 'not-a-uuid' })],
+  ])('still rejects a non-uuid string in the %s schema', (_label, parse) => {
+    expect(parse).toThrow()
   })
 })

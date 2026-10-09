@@ -76,6 +76,21 @@ describe('POST /api/scheduler/trigger', () => {
     expect(commandBusExecuteMock).not.toHaveBeenCalled()
   })
 
+  it('dispatches a module-registered schedule id that lacks RFC 4122 version bits', async () => {
+    const moduleScheduleId = 'fa169e8a-5a28-088b-a0bd-30a839f04ea9'
+    commandBusExecuteMock.mockResolvedValue({
+      result: outcome({ scheduleId: moduleScheduleId, outcome: 'enqueued', queueJobId: 'job-1' }),
+    })
+
+    const response = await POST(request({ id: moduleScheduleId }))
+
+    expect(response.status).toBe(200)
+    expect(commandBusExecuteMock).toHaveBeenCalledWith(
+      'scheduler.jobs.trigger',
+      expect.objectContaining({ input: { id: moduleScheduleId } }),
+    )
+  })
+
   it.each([
     ['enqueued' as const, 200],
     ['not_found' as const, 404],
